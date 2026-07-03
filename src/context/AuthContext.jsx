@@ -10,12 +10,14 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState(null)
   const [teacher, setTeacher] = useState(null)
+  const [displayName, setDisplayName] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const loadProfile = useCallback(async (sess) => {
     if (!sess) {
       setRole(null)
       setTeacher(null)
+      setDisplayName(null)
       return
     }
     // Check admin first.
@@ -28,6 +30,7 @@ export function AuthProvider({ children }) {
     if (adminRow) {
       setRole(adminRow.role)
       setTeacher(null)
+      setDisplayName(adminRow.full_name)
       return
     }
 
@@ -40,6 +43,7 @@ export function AuthProvider({ children }) {
 
     setTeacher(t ?? null)
     setRole(t ? 'teacher' : null)
+    setDisplayName(t?.full_name ?? null)
   }, [])
 
   useEffect(() => {
@@ -77,6 +81,7 @@ export function AuthProvider({ children }) {
     user: session?.user ?? null,
     role,
     teacher,
+    displayName,
     loading,
     isEnrolled: !!(teacher?.enrolled_at && teacher?.consent_at),
     refreshTeacher,

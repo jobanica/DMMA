@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import { FullPageLoader } from './components/ui.jsx'
 import Layout from './components/Layout.jsx'
+import AdminLayout from './components/AdminLayout.jsx'
 
 import Login from './pages/Login.jsx'
 import Enrollment from './pages/teacher/Enrollment.jsx'
@@ -35,7 +36,7 @@ function TeacherRoutes() {
 
 function AdminRoutes() {
   return (
-    <Layout>
+    <AdminLayout>
       <Routes>
         <Route path="/admin" element={<Dashboard />} />
         <Route path="/admin/logs" element={<Logs />} />
@@ -46,7 +47,7 @@ function AdminRoutes() {
         <Route path="/admin/reports" element={<Reports />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
-    </Layout>
+    </AdminLayout>
   )
 }
 
