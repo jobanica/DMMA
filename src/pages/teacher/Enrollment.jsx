@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCamera } from '../../components/useCamera.js'
@@ -18,14 +18,32 @@ export default function Enrollment() {
   const [samples, setSamples] = useState([]) // array of descriptor arrays
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [modelsReady, setModelsReady] = useState(false)
   const { videoRef, ready, error: camError, start, stop } = useCamera({ facingMode: 'user' })
 
-  async function beginCapture() {
+  function beginCapture() {
     setError(null)
     setStep('capture')
-    await face.loadModels()
-    await start()
   }
+
+  // Start the camera as soon as the capture step mounts (so the preview shows
+  // immediately), then load the face models. A model-load failure surfaces an
+  // error but never blocks the camera preview.
+  useEffect(() => {
+    if (step !== 'capture') return
+    let cancelled = false
+    ;(async () => {
+      await start()
+      try {
+        await face.loadModels()
+        if (!cancelled) setModelsReady(true)
+      } catch {
+        if (!cancelled) setError('Could not load the face models. Check your connection and reload the page.')
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
 
   async function captureSample() {
     setError(null)
@@ -116,11 +134,14 @@ export default function Enrollment() {
             </Alert>
           )}
           {error && <Alert tone="warn">{error}</Alert>}
+          {ready && !modelsReady && !error && (
+            <p className="text-center text-sm text-slate-500">Loading face models…</p>
+          )}
           <div className="flex gap-2">
             <button
               className="btn-ghost flex-1"
               onClick={captureSample}
-              disabled={!ready || busy || samples.length >= SAMPLES_NEEDED}
+              disabled={!ready || !modelsReady || busy || samples.length >= SAMPLES_NEEDED}
             >
               {busy ? <Spinner /> : 'Capture selfie'}
             </button>
