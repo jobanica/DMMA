@@ -43,13 +43,14 @@ export default function Scan() {
   const videoRef = useRef(null)
   const qrControlsRef = useRef(null)
 
-  // Load the enrolled template once (only the caller's own vector; §9/RPC).
+  // Load the enrolled template + face models once. Load them independently so
+  // a slow/failed model load never blocks fetching the template (§9/RPC).
   useEffect(() => {
     (async () => {
-      await face.loadModels()
       const { data } = await supabase.rpc('get_my_face_template')
       setTemplate(data ?? null)
     })()
+    face.loadModels().catch(() => setError('Could not load the face models. Check your connection and reload.'))
   }, [])
 
   // --- Step 1: QR scanning --------------------------------------------------
