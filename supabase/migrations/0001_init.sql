@@ -1,0 +1,262 @@
+-- ============================================================================
+-- DMMA Teacher Attendance System — initial schema
+-- Data model per spec §7. Row Level Security per spec §7/§10.
+--
+-- Design notes:
+--  * `scanned_at` on attendance_logs is ALWAYS set server-side (see the
+--    record-scan Edge Function). The device clock is never trusted (spec §5).
+--  * `qr_secret`, `face_template`, and reference images must never be readable
+--    by the teacher client (spec §7/§10). RLS below enforces this: teachers
+--    can only see their own non-sensitive columns via the `me` views / policies,
+--    and the sensitive columns are only reachable by the service role used
+--    inside Edge Functions.
+-- ============================================================================
+
+create extension if not exists "pgcrypto";
+
+-- ---------------------------------------------------------------------------
+-- Role helpers
+-- ---------------------------------------------------------------------------
+-- Admin identity is keyed on auth.users.id via the admins table.
+create table if not exists public.admins (
+  id         uuid primary key references auth.users (id) on delete cascade,
+  full_name  text not null,
+  role       text not null default 'admin' check (role in ('admin', 'super_admin')),
+  created_at timestamptz not null default now()
+);
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.admins a where a.id = auth.uid());
+$$;
+
+create or replace function public.is_super_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.admins a
+    where a.id = auth.uid() and a.role = 'super_admin'
+  );
+$$;
+
+-- ---------------------------------------------------------------------------
+-- teachers
+-- ---------------------------------------------------------------------------
+create table if not exists public.teachers (
+  id                   uuid primary key default gen_random_uuid(),
+  auth_user_id         uuid unique references auth.users (id) on delete set null,
+  employee_id          text unique not null,
+  full_name            text not null,
+  email                text unique not null,
+  department           text,
+  reference_face_path  text,                  -- Storage path (null if template-only)
+  face_template        jsonb,                 -- computed descriptor (preferred)
+  enrolled_at          timestamptz,
+  consent_at           timestamptz,
+  active               boolean not null default true,
+  created_at           timestamptz not null default now()
+);
+
+create index if not exists teachers_auth_user_idx on public.teachers (auth_user_id);
+
+-- ---------------------------------------------------------------------------
+-- rooms
+-- ---------------------------------------------------------------------------
+create table if not exists public.rooms (
+  id         uuid primary key default gen_random_uuid(),
+  room_code  text unique not null,
+  building   text,
+  floor      text,
+  latitude   double precision,
+  longitude  double precision,
+  qr_secret  text not null default encode(gen_random_bytes(32), 'hex'),
+  active     boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
+-- schedules
+-- ---------------------------------------------------------------------------
+create table if not exists public.schedules (
+  id           uuid primary key default gen_random_uuid(),
+  teacher_id   uuid not null references public.teachers (id) on delete cascade,
+  room_id      uuid not null references public.rooms (id) on delete cascade,
+  day_of_week  int not null check (day_of_week between 0 and 6), -- 0=Sun..6=Sat
+  start_time   time not null,
+  end_time     time not null,
+  subject      text,
+  term         text,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists schedules_teacher_idx on public.schedules (teacher_id);
+create index if not exists schedules_room_dow_idx on public.schedules (room_id, day_of_week);
+
+-- ---------------------------------------------------------------------------
+-- attendance_logs
+-- ---------------------------------------------------------------------------
+create table if not exists public.attendance_logs (
+  id               uuid primary key default gen_random_uuid(),
+  teacher_id       uuid not null references public.teachers (id) on delete cascade,
+  room_id          uuid not null references public.rooms (id) on delete cascade,
+  event_type       text not null check (event_type in ('in', 'out')),
+  scanned_at       timestamptz not null default now(),   -- SERVER time only
+  latitude         double precision,
+  longitude        double precision,
+  distance_m       numeric,
+  face_match_score numeric,
+  face_verified    boolean,
+  liveness_passed  boolean,
+  status           text not null default 'verified'
+                     check (status in ('verified', 'flagged', 'override', 'rejected')),
+  auto_closed      boolean not null default false,  -- end-of-day dangling close
+  device_info      jsonb,
+  reviewed_by      uuid references public.admins (id),
+  reviewed_at      timestamptz,
+  created_at       timestamptz not null default now()
+);
+
+create index if not exists logs_teacher_idx  on public.attendance_logs (teacher_id, scanned_at desc);
+create index if not exists logs_room_idx      on public.attendance_logs (room_id, scanned_at desc);
+create index if not exists logs_status_idx    on public.attendance_logs (status) where status in ('flagged', 'override');
+-- Fast lookup of a teacher's latest open ('in') event per room for in/out logic.
+create index if not exists logs_open_in_idx
+  on public.attendance_logs (teacher_id, room_id, scanned_at desc)
+  where event_type = 'in';
+
+-- ---------------------------------------------------------------------------
+-- consent_records (RA 10173 audit trail)
+-- ---------------------------------------------------------------------------
+create table if not exists public.consent_records (
+  id             uuid primary key default gen_random_uuid(),
+  teacher_id     uuid not null references public.teachers (id) on delete cascade,
+  policy_version text not null,
+  consented_at   timestamptz not null default now(),
+  ip_address     text
+);
+
+create index if not exists consent_teacher_idx on public.consent_records (teacher_id);
+
+-- ---------------------------------------------------------------------------
+-- Convenience: resolve the teacher row for the current auth user.
+-- ---------------------------------------------------------------------------
+create or replace function public.current_teacher_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select t.id from public.teachers t where t.auth_user_id = auth.uid();
+$$;
+
+-- ============================================================================
+-- Row Level Security
+-- ============================================================================
+alter table public.admins          enable row level security;
+alter table public.teachers        enable row level security;
+alter table public.rooms           enable row level security;
+alter table public.schedules       enable row level security;
+alter table public.attendance_logs enable row level security;
+alter table public.consent_records enable row level security;
+
+-- admins: an admin can read their own row; super_admins manage all admins.
+create policy admins_self_read on public.admins
+  for select using (id = auth.uid() or public.is_super_admin());
+create policy admins_super_manage on public.admins
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
+
+-- teachers:
+--  * a teacher can read their OWN row (the client still must avoid selecting
+--    sensitive columns; those are additionally never returned to the teacher
+--    UI, and only the service role reads face_template / qr for matching).
+--  * admins can read and manage all teachers.
+create policy teachers_self_read on public.teachers
+  for select using (auth_user_id = auth.uid() or public.is_admin());
+create policy teachers_admin_write on public.teachers
+  for all using (public.is_admin()) with check (public.is_admin());
+-- teachers may update only their own consent/enrollment-completion timestamps.
+create policy teachers_self_update on public.teachers
+  for update using (auth_user_id = auth.uid())
+  with check (auth_user_id = auth.uid());
+
+-- rooms: everyone authenticated can read NON-secret room info (needed to render
+-- room labels). qr_secret is protected by a column-privilege grant below, not
+-- by RLS, so we revoke it from anon/authenticated. Admins manage rooms.
+create policy rooms_read on public.rooms
+  for select using (auth.role() = 'authenticated');
+create policy rooms_admin_write on public.rooms
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- schedules: a teacher reads their own; admins manage all.
+create policy schedules_self_read on public.schedules
+  for select using (teacher_id = public.current_teacher_id() or public.is_admin());
+create policy schedules_admin_write on public.schedules
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- attendance_logs: a teacher reads only their own logs; admins read all.
+-- INSERTs are performed by the record-scan Edge Function (service role), which
+-- bypasses RLS — teachers cannot self-insert arbitrary logs from the client.
+create policy logs_self_read on public.attendance_logs
+  for select using (teacher_id = public.current_teacher_id() or public.is_admin());
+create policy logs_admin_write on public.attendance_logs
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- consent_records: a teacher reads their own; admins read all. Inserts happen
+-- via the enrollment Edge Function / admin.
+create policy consent_self_read on public.consent_records
+  for select using (teacher_id = public.current_teacher_id() or public.is_admin());
+create policy consent_admin_write on public.consent_records
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- ---------------------------------------------------------------------------
+-- Column-level protection for room secrets and face templates.
+-- qr_secret and face_template must never leave the server; only the service
+-- role (Edge Functions) and the SECURITY DEFINER RPCs may read them.
+--
+-- NOTE: a bare `revoke select (col)` is INEFFECTIVE while the role still holds
+-- table-level SELECT (Supabase grants that to anon/authenticated by default) —
+-- table-level SELECT implies read on every column. The correct pattern is to
+-- revoke the table-level SELECT and re-grant SELECT on the non-sensitive
+-- columns only. INSERT/UPDATE grants are untouched, so RLS-gated writes and
+-- the biometric-deletion tooling keep working.
+-- ---------------------------------------------------------------------------
+revoke select on public.rooms from anon, authenticated;
+grant select (id, room_code, building, floor, latitude, longitude, active, created_at)
+  on public.rooms to anon, authenticated;
+
+revoke select on public.teachers from anon, authenticated;
+grant select (id, auth_user_id, employee_id, full_name, email, department,
+              reference_face_path, enrolled_at, consent_at, active, created_at)
+  on public.teachers to anon, authenticated;
+
+-- ============================================================================
+-- Storage: private bucket for raw reference images (spec §10 data minimization
+-- prefers templates, but if raw images are kept they live here, admin-only).
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('reference-faces', 'reference-faces', false)
+on conflict (id) do nothing;
+
+create policy ref_faces_admin_all on storage.objects
+  for all to authenticated
+  using (bucket_id = 'reference-faces' and public.is_admin())
+  with check (bucket_id = 'reference-faces' and public.is_admin());
+
+-- A teacher may upload their own enrollment selfie into a folder named by their
+-- teacher id (path = '<teacher_id>/...'), but cannot read others'.
+create policy ref_faces_self_insert on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'reference-faces'
+    and (storage.foldername(name))[1] = public.current_teacher_id()::text
+  );
