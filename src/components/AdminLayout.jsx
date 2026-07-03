@@ -4,8 +4,8 @@ import { Icon } from './icons.jsx'
 
 const NAV = [
   { to: '/admin', end: true, label: 'Dashboard', icon: Icon.grid },
-  { to: '/admin/logs', label: 'Logs', icon: Icon.list },
-  { to: '/admin/review', label: 'Review', icon: Icon.flag },
+  { to: '/admin/logs', label: 'Attendance Logs', icon: Icon.list },
+  { to: '/admin/review', label: 'Review Queue', icon: Icon.flag },
   { to: '/admin/teachers', label: 'Teachers', icon: Icon.users },
   { to: '/admin/rooms', label: 'Rooms & QR', icon: Icon.qr },
   { to: '/admin/schedules', label: 'Schedules', icon: Icon.calendar },
@@ -23,37 +23,51 @@ export default function AdminLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-canvas">
-      {/* Sidebar rail */}
-      <aside className="fixed inset-y-0 left-0 z-20 flex w-16 flex-col items-center bg-navy-900 py-4 lg:w-20">
-        <div className="mb-6 grid h-11 w-11 place-content-center rounded-xl bg-brand-500 text-sm font-black text-white shadow-lg">
-          DM
+      {/* Sidebar: icon-only rail on small screens, expanded with labels on md+ */}
+      <aside className="fixed inset-y-0 left-0 z-20 flex w-16 flex-col bg-navy-900 py-4 md:w-60">
+        {/* Brand: school seal + wordmark */}
+        <div className="mb-6 flex items-center gap-3 px-3 md:px-5">
+          <img
+            src="/logo.png"
+            alt="DMMA College of Southern Philippines seal"
+            className="h-10 w-10 shrink-0 rounded-full bg-white object-contain ring-2 ring-white/20"
+          />
+          <div className="hidden leading-tight md:block">
+            <p className="text-sm font-extrabold text-white">DMMA</p>
+            <p className="text-[11px] text-navy-200">Attendance</p>
+          </div>
         </div>
-        <nav className="flex flex-1 flex-col items-center gap-1.5">
+
+        <nav className="flex flex-1 flex-col gap-1 px-2 md:px-3">
           {NAV.map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end} title={n.label}
               className={({ isActive }) =>
-                `group relative grid h-11 w-11 place-content-center rounded-xl transition ${
+                `group relative flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition md:px-3 ${
                   isActive
                     ? 'bg-brand-500 text-white'
                     : 'text-navy-200 hover:bg-navy-800 hover:text-white'
                 }`
               }>
-              <n.icon />
-              <span className="pointer-events-none absolute left-full ml-3 hidden whitespace-nowrap rounded-md bg-navy-900 px-2 py-1 text-xs text-white shadow-lg group-hover:block">
+              <span className="grid h-6 w-6 shrink-0 place-content-center"><n.icon /></span>
+              <span className="hidden text-sm font-medium md:block">{n.label}</span>
+              {/* tooltip for the collapsed (mobile) rail */}
+              <span className="pointer-events-none absolute left-full ml-3 hidden whitespace-nowrap rounded-md bg-navy-900 px-2 py-1 text-xs text-white shadow-lg group-hover:block md:group-hover:hidden">
                 {n.label}
               </span>
             </NavLink>
           ))}
         </nav>
+
         <button title="Sign out"
           onClick={async () => { await signOut(); navigate('/login') }}
-          className="grid h-11 w-11 place-content-center rounded-xl text-navy-200 transition hover:bg-navy-800 hover:text-white">
-          <Icon.logout />
+          className="mx-2 flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-navy-200 transition hover:bg-navy-800 hover:text-white md:mx-3 md:px-3">
+          <span className="grid h-6 w-6 shrink-0 place-content-center"><Icon.logout /></span>
+          <span className="hidden text-sm font-medium md:block">Sign out</span>
         </button>
       </aside>
 
       {/* Main column */}
-      <div className="pl-16 lg:pl-20">
+      <div className="pl-16 md:pl-60">
         {/* Topbar */}
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur sm:px-6">
           <h1 className="truncate text-lg font-extrabold uppercase tracking-tight text-navy-900 sm:text-xl">
