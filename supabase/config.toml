@@ -37,3 +37,6 @@ verify_jwt = false
 
 [functions.create-teacher]
 verify_jwt = false
+
+[functions.parse-schedule]
+verify_jwt = false
