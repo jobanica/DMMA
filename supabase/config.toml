@@ -1,0 +1,36 @@
+# Minimal Supabase CLI config for local dev (`supabase start`).
+project_id = "dmma-attendance"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_confirmations = false
+
+# Edge Functions read the QR HMAC secret from the room row, so no extra secret
+# is needed here. GEOFENCE_FLAG_METERS can be overridden per-deployment.
+[functions.record-scan]
+verify_jwt = false   # we verify the caller's JWT manually inside the function
+
+[functions.room-qr]
+verify_jwt = false
+
+[functions.auto-close-dangling]
+verify_jwt = false
