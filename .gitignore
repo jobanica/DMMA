@@ -32,3 +32,5 @@ supabase/.temp
 # face-api models are fetched into public/models (large binaries); keep the note
 public/models/*
 !public/models/README.md
+.vercel
+.env*
