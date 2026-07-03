@@ -1,12 +1,25 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../../lib/supabase.js'
+import { supabase, invokeFn } from '../../lib/supabase.js'
 import { Alert, Field, Spinner } from '../../components/ui.jsx'
 
-// Teacher management (spec §6.3): CRUD + enrollment/consent status + a
-// biometric-deletion action for RA 10173 retention/offboarding (spec §10).
+const EMPTY = { employee_id: '', full_name: '', email: '', department: '', password: '' }
+
+// Generate a readable temporary password (letters + digits, no ambiguous chars).
+function genPassword() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+  let out = ''
+  const arr = new Uint32Array(10)
+  crypto.getRandomValues(arr)
+  for (let i = 0; i < 10; i++) out += chars[arr[i] % chars.length]
+  return out
+}
+
+// Teacher management (spec §6.3): create a login with a temporary password
+// (via the create-teacher Edge Function) that the teacher must change on first
+// sign-in; enrollment/consent status; biometric deletion for RA 10173.
 export default function Teachers() {
   const [rows, setRows] = useState([])
-  const [form, setForm] = useState({ employee_id: '', full_name: '', email: '', department: '' })
+  const [form, setForm] = useState(EMPTY)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
 
@@ -26,15 +39,21 @@ export default function Teachers() {
     e.preventDefault()
     setBusy(true)
     setMsg(null)
-    const { error } = await supabase.from('teachers').insert(form)
-    if (error) setMsg({ tone: 'error', text: error.message })
-    else {
-      setMsg({
-        tone: 'success',
-        text: 'Teacher record created. Invite them in Supabase Auth with the same email to enable login.',
-      })
-      setForm({ employee_id: '', full_name: '', email: '', department: '' })
-      load()
+    try {
+      const res = await invokeFn('create-teacher', form)
+      if (!res?.ok) {
+        setMsg({ tone: 'error', text: res?.error ?? 'Could not create the teacher.' })
+      } else {
+        const tempPw = form.password
+        setMsg({
+          tone: 'success',
+          text: `${form.full_name} created. Give them these one-time credentials — they must change the password on first sign-in.  Email: ${form.email}  ·  Temporary password: ${tempPw}`,
+        })
+        setForm(EMPTY)
+        load()
+      }
+    } catch (err) {
+      setMsg({ tone: 'error', text: err.message ?? 'Could not create the teacher.' })
     }
     setBusy(false)
   }
@@ -74,8 +93,18 @@ export default function Teachers() {
         <Field label="Department">
           <input className="input" value={form.department} onChange={set('department')} />
         </Field>
-        <div className="sm:col-span-2 lg:col-span-4">
-          <button className="btn-primary" disabled={busy}>
+        <Field label="Temporary password" hint="Teacher must change this on first sign-in.">
+          <div className="flex gap-2">
+            <input className="input" value={form.password} onChange={set('password')}
+                   minLength={8} required placeholder="min 8 characters" />
+            <button type="button" className="btn-ghost whitespace-nowrap px-3"
+                    onClick={() => setForm((f) => ({ ...f, password: genPassword() }))}>
+              Generate
+            </button>
+          </div>
+        </Field>
+        <div className="flex items-end">
+          <button className="btn-primary w-full" disabled={busy}>
             {busy ? <Spinner /> : 'Add teacher'}
           </button>
         </div>

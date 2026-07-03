@@ -5,6 +5,7 @@ const teacherNav = [
   { to: '/', label: 'Home', end: true },
   { to: '/scan', label: 'Scan' },
   { to: '/history', label: 'History' },
+  { to: '/change-password', label: 'Password' },
 ]
 
 const adminNav = [
