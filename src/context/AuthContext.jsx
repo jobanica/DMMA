@@ -37,7 +37,7 @@ export function AuthProvider({ children }) {
     // Otherwise a teacher (non-sensitive columns only).
     const { data: t } = await supabase
       .from('teachers')
-      .select('id, full_name, employee_id, department, enrolled_at, consent_at, active')
+      .select('id, full_name, employee_id, department, enrolled_at, consent_at, active, must_change_password')
       .eq('auth_user_id', sess.user.id)
       .maybeSingle()
 

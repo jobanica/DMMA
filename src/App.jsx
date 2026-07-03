@@ -9,6 +9,7 @@ import Enrollment from './pages/teacher/Enrollment.jsx'
 import TeacherHome from './pages/teacher/Home.jsx'
 import Scan from './pages/teacher/Scan.jsx'
 import History from './pages/teacher/History.jsx'
+import ChangePassword from './pages/teacher/ChangePassword.jsx'
 
 import Dashboard from './pages/admin/Dashboard.jsx'
 import Logs from './pages/admin/Logs.jsx'
@@ -19,17 +20,27 @@ import Schedules from './pages/admin/Schedules.jsx'
 import Reports from './pages/admin/Reports.jsx'
 
 function TeacherRoutes() {
-  const { isEnrolled } = useAuth()
-  // A teacher cannot scan until enrolled + consented (spec §6.1).
+  const { isEnrolled, teacher } = useAuth()
+  const mustChange = !!teacher?.must_change_password
+  // First sign-in with a temporary password forces a password change before
+  // anything else; then enrollment + consent are required before scanning.
   return (
     <Layout>
-      <Routes>
-        <Route path="/" element={isEnrolled ? <TeacherHome /> : <Navigate to="/enroll" replace />} />
-        <Route path="/enroll" element={isEnrolled ? <Navigate to="/" replace /> : <Enrollment />} />
-        <Route path="/scan" element={isEnrolled ? <Scan /> : <Navigate to="/enroll" replace />} />
-        <Route path="/history" element={<History />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      {mustChange ? (
+        <Routes>
+          <Route path="/change-password" element={<ChangePassword />} />
+          <Route path="*" element={<Navigate to="/change-password" replace />} />
+        </Routes>
+      ) : (
+        <Routes>
+          <Route path="/change-password" element={<ChangePassword />} />
+          <Route path="/" element={isEnrolled ? <TeacherHome /> : <Navigate to="/enroll" replace />} />
+          <Route path="/enroll" element={isEnrolled ? <Navigate to="/" replace /> : <Enrollment />} />
+          <Route path="/scan" element={isEnrolled ? <Scan /> : <Navigate to="/enroll" replace />} />
+          <Route path="/history" element={<History />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      )}
     </Layout>
   )
 }

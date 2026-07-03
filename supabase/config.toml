@@ -34,3 +34,6 @@ verify_jwt = false
 
 [functions.auto-close-dangling]
 verify_jwt = false
+
+[functions.create-teacher]
+verify_jwt = false
