@@ -3,6 +3,14 @@ import QRCode from 'qrcode'
 import { supabase, invokeFn } from '../../lib/supabase.js'
 import { Alert, Field, Spinner } from '../../components/ui.jsx'
 
+// "Building · Floor N" line for the printable QR (omits blank parts).
+function locationLine(room) {
+  const parts = []
+  if (room.building) parts.push(room.building)
+  if (room.floor) parts.push(`Floor ${room.floor}`)
+  return parts.join(' · ')
+}
+
 // Room & QR management (spec §6.3, §8): create rooms with coordinates, then
 // generate a signed static QR (Tier A) and print it. The token is produced
 // server-side by the room-qr Edge Function (secret never reaches the client).
@@ -60,15 +68,23 @@ export default function Rooms() {
   function printQr() {
     const w = window.open('', '_blank')
     if (!w) return
+    const room = qr.room
+    const esc = (s) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))
+    const loc = locationLine(room)
     w.document.write(`
-      <html><head><title>${qr.room.room_code} QR</title>
-      <style>body{font-family:sans-serif;text-align:center;padding:40px}
-      h1{font-size:28px}img{width:320px}</style></head>
+      <html><head><title>${esc(room.room_code)} QR</title>
+      <style>
+        body{font-family:sans-serif;text-align:center;padding:48px 24px;margin:0}
+        h1{font-size:40px;margin:0 0 4px}
+        .loc{font-size:20px;color:#334155;margin:0 0 24px}
+        img{width:340px;height:340px}
+        .foot{color:#64748b;font-size:13px;margin-top:20px}
+      </style></head>
       <body>
-        <h1>${qr.room.room_code}</h1>
-        <p>${qr.room.building ?? ''} ${qr.room.floor ? '· Floor ' + qr.room.floor : ''}</p>
-        <img src="${qr.dataUrl}" />
-        <p style="color:#666;font-size:12px">DMMA Attendance — scan to time in / out</p>
+        <h1>${esc(room.room_code)}</h1>
+        ${loc ? `<p class="loc">${esc(loc)}</p>` : ''}
+        <img src="${qr.dataUrl}" alt="Room QR" />
+        <p class="foot">DMMA Attendance — scan to time in / out</p>
       </body></html>`)
     w.document.close()
     w.focus()
@@ -126,7 +142,10 @@ export default function Rooms() {
           <h2 className="mb-2 font-semibold">Printable QR</h2>
           {qr ? (
             <div className="text-center">
-              <p className="font-medium">{qr.room.room_code}</p>
+              <p className="text-lg font-bold text-navy-900">{qr.room.room_code}</p>
+              {locationLine(qr.room) && (
+                <p className="text-sm text-slate-500">{locationLine(qr.room)}</p>
+              )}
               <img src={qr.dataUrl} alt="Room QR" className="mx-auto my-3 w-56" />
               <button className="btn-primary w-full" onClick={printQr}>Print</button>
               <p className="mt-2 break-all text-[10px] text-slate-400">{qr.token}</p>
