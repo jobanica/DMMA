@@ -1,7 +1,7 @@
 -- ============================================================================
 -- DMMA hosted Supabase setup — paste this whole file into the Supabase SQL
 -- Editor (Dashboard -> SQL Editor -> New query -> paste -> Run).
--- Combines migrations 0001, 0002, and the room seed. Safe to run once.
+-- Combines migrations 0001, 0002, 0003, and the room seed. Safe to run once.
 -- ============================================================================
 
 -- >>>>>>>>>>>>>>>>>>>> 0001_init.sql <<<<<<<<<<<<<<<<<<<<
@@ -226,15 +226,25 @@ create policy consent_admin_write on public.consent_records
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- ---------------------------------------------------------------------------
--- Column-level protection for room secrets.
--- qr_secret must never leave the server. Revoke it from client roles; the
--- service role (Edge Functions) retains full access.
+-- Column-level protection for room secrets and face templates.
+-- qr_secret and face_template must never leave the server; only the service
+-- role (Edge Functions) and the SECURITY DEFINER RPCs may read them.
+--
+-- NOTE: a bare `revoke select (col)` is INEFFECTIVE while the role still holds
+-- table-level SELECT (Supabase grants that to anon/authenticated by default) —
+-- table-level SELECT implies read on every column. The correct pattern is to
+-- revoke the table-level SELECT and re-grant SELECT on the non-sensitive
+-- columns only. INSERT/UPDATE grants are untouched, so RLS-gated writes and
+-- the biometric-deletion tooling keep working.
 -- ---------------------------------------------------------------------------
-revoke select (qr_secret) on public.rooms from anon, authenticated;
+revoke select on public.rooms from anon, authenticated;
+grant select (id, room_code, building, floor, latitude, longitude, active, created_at)
+  on public.rooms to anon, authenticated;
 
--- Likewise keep face templates out of the teacher client. Admins need them for
--- management tooling only through the service role; revoke from client roles.
-revoke select (face_template) on public.teachers from anon, authenticated;
+revoke select on public.teachers from anon, authenticated;
+grant select (id, auth_user_id, employee_id, full_name, email, department,
+              reference_face_path, enrolled_at, consent_at, active, created_at)
+  on public.teachers to anon, authenticated;
 
 -- ============================================================================
 -- Storage: private bucket for raw reference images (spec §10 data minimization
@@ -376,6 +386,26 @@ as
   join public.teachers t on t.id = latest.teacher_id
   join public.rooms r    on r.id = latest.room_id
   where latest.event_type = 'in';
+
+-- >>>>>>>>>>>>>>>>>>>> 0003_fix_column_grants.sql <<<<<<<<<<<<<<<<<<<<
+-- ============================================================================
+-- Fix: make the sensitive-column protection effective on databases that were
+-- created with the original 0001 (whose bare `revoke select (col)` was a no-op
+-- while table-level SELECT remained). Idempotent — safe to re-run and harmless
+-- on fresh databases where 0001 already applies the corrected pattern.
+--
+-- Without this, any authenticated user could read rooms.qr_secret (and forge
+-- valid room QR tokens, defeating the anti-proxy control) or teachers.face_template.
+-- ============================================================================
+
+revoke select on public.rooms from anon, authenticated;
+grant select (id, room_code, building, floor, latitude, longitude, active, created_at)
+  on public.rooms to anon, authenticated;
+
+revoke select on public.teachers from anon, authenticated;
+grant select (id, auth_user_id, employee_id, full_name, email, department,
+              reference_face_path, enrolled_at, consent_at, active, created_at)
+  on public.teachers to anon, authenticated;
 
 -- >>>>>>>>>>>>>>>>>>>> seed.sql (sample rooms) <<<<<<<<<<<<<<<<<<<<
 -- ============================================================================
