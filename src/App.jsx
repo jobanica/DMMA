@@ -5,6 +5,7 @@ import Layout from './components/Layout.jsx'
 import AdminLayout from './components/AdminLayout.jsx'
 
 import Login from './pages/Login.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
 import Enrollment from './pages/teacher/Enrollment.jsx'
 import TeacherHome from './pages/teacher/Home.jsx'
 import Scan from './pages/teacher/Scan.jsx'
@@ -63,9 +64,12 @@ function AdminRoutes() {
 }
 
 export default function App() {
-  const { loading, session, role } = useAuth()
+  const { loading, session, role, recovery } = useAuth()
 
   if (loading) return <FullPageLoader />
+
+  // A password-reset link lands here with a recovery session — set new password.
+  if (recovery) return <ResetPassword />
 
   if (!session) {
     return (

@@ -11,6 +11,7 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(null)
   const [teacher, setTeacher] = useState(null)
   const [displayName, setDisplayName] = useState(null)
+  const [recovery, setRecovery] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const loadProfile = useCallback(async (sess) => {
@@ -57,7 +58,10 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, s) => {
+    } = supabase.auth.onAuthStateChange(async (event, s) => {
+      // A password-reset email link signs the user in with a recovery session;
+      // flag it so the app shows the reset-password screen instead of the app.
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
       setSession(s)
       await loadProfile(s)
     })
@@ -84,6 +88,8 @@ export function AuthProvider({ children }) {
     displayName,
     loading,
     isEnrolled: !!(teacher?.enrolled_at && teacher?.consent_at),
+    recovery,
+    clearRecovery: () => setRecovery(false),
     refreshTeacher,
     signOut,
   }
