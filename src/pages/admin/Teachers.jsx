@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase, invokeFn } from '../../lib/supabase.js'
 import { Alert, Field, Spinner } from '../../components/ui.jsx'
 
-const EMPTY = { employee_id: '', full_name: '', email: '', department: '', password: '' }
+const EMPTY = { employee_id: '', full_name: '', email: '', department: '', phone: '', password: '' }
 
 // Generate a readable temporary password (letters + digits, no ambiguous chars).
 function genPassword() {
@@ -26,7 +26,7 @@ export default function Teachers() {
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('teachers')
-      .select('id, employee_id, full_name, email, department, enrolled_at, consent_at, active')
+      .select('id, employee_id, full_name, email, department, phone, enrolled_at, consent_at, active')
       .order('full_name')
     setRows(data ?? [])
   }, [])
@@ -93,6 +93,9 @@ export default function Teachers() {
         <Field label="Department">
           <input className="input" value={form.department} onChange={set('department')} />
         </Field>
+        <Field label="Phone">
+          <input type="tel" className="input" value={form.phone} onChange={set('phone')} placeholder="Optional" />
+        </Field>
         <Field label="Temporary password" hint="Teacher must change this on first sign-in.">
           <div className="flex gap-2">
             <input className="input" value={form.password} onChange={set('password')}
@@ -117,6 +120,7 @@ export default function Teachers() {
               <th className="p-3">Name</th>
               <th className="p-3">Employee ID</th>
               <th className="p-3">Dept</th>
+              <th className="p-3">Phone</th>
               <th className="p-3">Consent</th>
               <th className="p-3">Enrolled</th>
               <th className="p-3">Active</th>
@@ -129,6 +133,7 @@ export default function Teachers() {
                 <td className="p-3 font-medium">{t.full_name}</td>
                 <td className="p-3">{t.employee_id}</td>
                 <td className="p-3 text-slate-500">{t.department ?? '—'}</td>
+                <td className="p-3 text-slate-500">{t.phone ?? '—'}</td>
                 <td className="p-3">{t.consent_at ? '✓' : '—'}</td>
                 <td className="p-3">{t.enrolled_at ? '✓' : '—'}</td>
                 <td className="p-3">

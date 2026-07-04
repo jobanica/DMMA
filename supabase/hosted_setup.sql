@@ -1,6 +1,6 @@
 -- ============================================================================
 -- DMMA hosted Supabase setup — paste into the Supabase SQL Editor and Run.
--- Combines migrations 0001–0005 and the room seed. Safe to run once.
+-- Combines migrations 0001–0006 and the room seed. Safe to run once.
 -- ============================================================================
 
 -- >>>>>>>>>>>>>>>>>>>> 0001_init.sql <<<<<<<<<<<<<<<<<<<<
@@ -464,6 +464,17 @@ alter table public.teachers
 -- to the client roles. UPDATE is already table-level granted, so a teacher can
 -- clear their own flag under the teachers_self_update RLS policy.
 grant select (must_change_password) on public.teachers to anon, authenticated;
+
+-- >>>>>>>>>>>>>>>>>>>> 0006_teacher_phone.sql <<<<<<<<<<<<<<<<<<<<
+-- ============================================================================
+-- Add an optional phone number to teachers (contact info).
+-- teachers SELECT is column-restricted (see 0004), so expose the new column to
+-- the client roles. INSERT/UPDATE are already table-level granted.
+-- ============================================================================
+
+alter table public.teachers add column if not exists phone text;
+
+grant select (phone) on public.teachers to anon, authenticated;
 
 -- >>>>>>>>>>>>>>>>>>>> seed.sql (sample rooms) <<<<<<<<<<<<<<<<<<<<
 -- ============================================================================
