@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
   const full_name = (body?.full_name ?? '').trim()
   const email = (body?.email ?? '').trim().toLowerCase()
   const department = (body?.department ?? '').trim() || null
+  const phone = (body?.phone ?? '').trim() || null
   const password = body?.password ?? ''
 
   if (!employee_id || !full_name || !email) return json({ ok: false, error: 'Employee ID, full name and email are required.' })
@@ -57,10 +58,10 @@ Deno.serve(async (req) => {
   const { data: teacher, error: tErr } = await admin
     .from('teachers')
     .insert({
-      employee_id, full_name, email, department,
+      employee_id, full_name, email, department, phone,
       auth_user_id: authUserId, must_change_password: true, active: true,
     })
-    .select('id, employee_id, full_name, email, department')
+    .select('id, employee_id, full_name, email, department, phone')
     .single()
 
   if (tErr) {
